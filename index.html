@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chapter Activity Tracker</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:     #F5F7FF;
+      --card:   #FFFFFF;
+      --border: #E4E8F5;
+      --tp:     #2D3250;
+      --ts:     #6B7299;
+      --tl:     #9BA3C5;
+      --accent: #5B7BFF;
+      --shadow: 0 2px 12px rgba(45,50,80,.08);
+      --r:      12px;
+      --rs:     8px;
+      --ov-events:  #B8CCFF;
+      --ov-actions: #B8F0D5;
+      --ov-spend:   #D5B8FF;
+      --c-cm:  #B8CCFF; --cl-cm:  #E8EEFF; --ct-cm:  #3D5CB8;
+      --c-sm:  #FFB8D1; --cl-sm:  #FFE8F0; --ct-sm:  #B83D70;
+      --c-cu:  #B8F0D5; --cl-cu:  #E5FFF2; --ct-cu:  #2D8C60;
+      --c-pm:  #FFF5B8; --cl-pm:  #FFFDE5; --ct-pm:  #7A6A1A;
+      --c-cp:  #FFD5B8; --cl-cp:  #FFF0E5; --ct-cp:  #8C5A2D;
+      --c-hk:  #D5B8FF; --cl-hk:  #F0E5FF; --ct-hk:  #6A3DB8;
+      --c-ot:  #D5D8E8; --cl-ot:  #F0F1F7; --ct-ot:  #5A5E7A;
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: var(--bg); color: var(--tp); line-height: 1.5; }
+
+    .app-header {
+      background: #fff; border-bottom: 1px solid var(--border);
+      padding: 14px 28px; display: flex; align-items: center; gap: 14px;
+      position: sticky; top: 0; z-index: 200;
+      box-shadow: 0 1px 4px rgba(45,50,80,.06);
+    }
+    .app-header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.02em; }
+    .org-badge { background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 3px 11px; font-size: .72rem; color: var(--ts); }
+    .loading-badge { background: #FFF5B8; border: 1px solid #FFF0A0; border-radius: 20px; padding: 3px 11px; font-size: .72rem; color: #7A6A1A; display: none; }
+
+    .nav-tabs { display: flex; gap: 2px; padding: 0 28px; border-bottom: 1px solid var(--border); background: #fff; }
+    .nav-tab { padding: 11px 18px; border: none; background: none; cursor: pointer; font-size: .85rem; font-weight: 500; color: var(--ts); border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all .15s; border-radius: var(--rs) var(--rs) 0 0; }
+    .nav-tab:hover { color: var(--tp); background: var(--bg); }
+    .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+    .main { padding: 22px 28px; max-width: 1440px; margin: 0 auto; }
+    .view { display: none; } .view.active { display: block; }
+
+    .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 18px 20px; box-shadow: var(--shadow); }
+    .card-title { font-size: .88rem; font-weight: 600; margin-bottom: 3px; }
+    .card-subtitle { font-size: .73rem; color: var(--ts); margin-bottom: 14px; }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+    .stat-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--rs); padding: 14px 16px; text-align: center; }
+    .stat-value { font-size: 1.55rem; font-weight: 700; letter-spacing: -.03em; }
+    .stat-label { font-size: .68rem; color: var(--ts); margin-top: 3px; line-height: 1.3; }
+
+    select, input[type=number], input[type=date] {
+      border: 1px solid var(--border); border-radius: var(--rs); padding: 7px 11px;
+      font-size: .85rem; color: var(--tp); background: #fff; outline: none;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    select:focus, input:focus { border-color: var(--c-cm); box-shadow: 0 0 0 3px rgba(184,204,255,.25); }
+    label { font-size: .78rem; font-weight: 500; color: var(--ts); }
+    .form-group { display: flex; flex-direction: column; gap: 5px; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; }
+
+    .metric-tabs { display: flex; gap: 5px; flex-wrap: wrap; }
+    .metric-tab { padding: 5px 13px; border: 1px solid var(--border); border-radius: 20px; font-size: .74rem; font-weight: 500; cursor: pointer; background: #fff; color: var(--ts); transition: all .15s; }
+    .metric-tab:hover { border-color: var(--c-cm); color: var(--accent); }
+    .metric-tab.active { background: #EEF2FF; border-color: var(--c-cm); color: var(--accent); font-weight: 600; }
+
+    .type-pills { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .type-pill { padding: 4px 12px; border-radius: 20px; font-size: .72rem; font-weight: 600; cursor: pointer; border: 1.5px solid transparent; transition: opacity .15s; user-select: none; }
+    .tp-cm { background: var(--cl-cm); color: var(--ct-cm); border-color: var(--c-cm); }
+    .tp-sm { background: var(--cl-sm); color: var(--ct-sm); border-color: var(--c-sm); }
+    .tp-cu { background: var(--cl-cu); color: var(--ct-cu); border-color: var(--c-cu); }
+    .tp-pm { background: var(--cl-pm); color: var(--ct-pm); border-color: var(--c-pm); }
+    .tp-cp { background: var(--cl-cp); color: var(--ct-cp); border-color: var(--c-cp); }
+    .tp-hk { background: var(--cl-hk); color: var(--ct-hk); border-color: var(--c-hk); }
+    .tp-ot { background: var(--cl-ot); color: var(--ct-ot); border-color: var(--c-ot); }
+    .type-pill.dim { opacity: .35; }
+
+    .badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 20px; font-size: .68rem; font-weight: 600; white-space: nowrap; }
+    .b-cm { background: var(--cl-cm); color: var(--ct-cm); }
+    .b-sm { background: var(--cl-sm); color: var(--ct-sm); }
+    .b-cu { background: var(--cl-cu); color: var(--ct-cu); }
+    .b-pm { background: var(--cl-pm); color: var(--ct-pm); }
+    .b-cp { background: var(--cl-cp); color: var(--ct-cp); }
+    .b-hk { background: var(--cl-hk); color: var(--ct-hk); }
+    .b-ot { background: var(--cl-ot); color: var(--ct-ot); }
+
+    .tbl-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    th { text-align: left; padding: 9px 11px; font-weight: 600; font-size: .72rem; color: var(--ts); border-bottom: 1px solid var(--border); background: var(--bg); }
+    td { padding: 9px 11px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #F8FAFE; }
+
+    .btn { padding: 8px 16px; border: none; border-radius: var(--rs); cursor: pointer; font-size: .85rem; font-weight: 500; transition: all .15s; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #4A68E8; }
+    .btn-primary:disabled { opacity: .6; cursor: not-allowed; }
+    .btn-del { background: #FFE8EC; color: #C0392B; padding: 3px 9px; font-size: .74rem; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-del:hover { background: #FFD0D8; }
+
+    .chart-wrap { position: relative; width: 100%; }
+    .ch-layout { display: grid; grid-template-columns: 280px 1fr; gap: 18px; }
+    .divider { height: 1px; background: var(--border); margin: 16px 0; }
+    .sec-hdr { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px; }
+    .sec-title { font-size: .98rem; font-weight: 700; }
+    .sec-sub { font-size: .76rem; color: var(--ts); margin-top: 2px; }
+    .row { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 16px; }
+    .empty { text-align: center; padding: 32px; color: var(--tl); font-size: .83rem; }
+    .success-msg { font-size: .78rem; color: #2D8C60; margin-left: 10px; display: none; }
+    .error-msg { font-size: .78rem; color: #C0392B; margin-left: 10px; display: none; }
+    input[type=number] { -moz-appearance: textfield; }
+    input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+
+    .ov-legend { display: flex; gap: 20px; margin-bottom: 10px; flex-wrap: wrap; }
+    .ov-leg-item { display: flex; align-items: center; gap: 7px; font-size: .75rem; color: var(--ts); font-weight: 500; }
+    .ov-leg-dot { width: 13px; height: 13px; border-radius: 3px; flex-shrink: 0; }
+
+    #loading-overlay {
+      position: fixed; inset: 0; background: rgba(245,247,255,.85);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      z-index: 999; gap: 14px;
+    }
+    .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: .85rem; color: var(--ts); font-weight: 500; }
+
+    @media(max-width:900px) {
+      .ch-layout { grid-template-columns: 1fr; }
+      .main { padding: 14px; }
+      .nav-tabs { padding: 0 14px; }
+      .app-header { padding: 12px 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Loading chapter data...</div>
+</div>
+
+<header class="app-header">
+  <h1>Chapter Activity Tracker</h1>
+  <span class="org-badge">23 Chapters</span>
+  <span class="loading-badge" id="saving-badge">Saving...</span>
+</header>
+
+<nav class="nav-tabs" id="nav-tabs">
+  <button class="nav-tab active" data-view="overview">All Chapters</button>
+  <button class="nav-tab" data-view="chapter">By Chapter</button>
+  <button class="nav-tab" data-view="eventtype">By Event Type</button>
+  <button class="nav-tab" data-view="add">+ Add Event</button>
+</nav>
+
+<div class="main">
+
+  <div id="view-overview" class="view active">
+    <div class="sec-hdr">
+      <div>
+        <div class="sec-title">All Chapters Overview</div>
+        <div class="sec-sub">Chapters ranked by total events, total actions, and total HQ spend.</div>
+      </div>
+    </div>
+    <div class="ov-legend">
+      <div class="ov-leg-item"><div class="ov-leg-dot" style="background:var(--ov-events)"></div>Total Events</div>
+      <div class="ov-leg-item"><div class="ov-leg-dot" style="background:var(--ov-actions)"></div>Total Actions</div>
+      <div class="ov-leg-item"><div class="ov-leg-dot" style="background:var(--ov-spend)"></div>Total HQ Spend</div>
+    </div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title">Total Events per Chapter</div>
+      <div class="card-subtitle">All event types combined.</div>
+      <div class="chart-wrap" style="height:560px"><canvas id="ov-events-chart"></canvas></div>
+    </div>
+    <div class="card" style="margin-bottom:18px">
+      <div class="card-title">Total Actions per Chapter</div>
+      <div class="card-subtitle">Action events only (all sub-types grouped together).</div>
+      <div class="chart-wrap" style="height:560px"><canvas id="ov-actions-chart"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Total HQ Spend per Chapter (£)</div>
+      <div class="card-subtitle">Sum of all HQ funding provided across all events.</div>
+      <div class="chart-wrap" style="height:560px"><canvas id="ov-spend-chart"></canvas></div>
+    </div>
+  </div>
+
+  <div id="view-chapter" class="view">
+    <div class="sec-hdr">
+      <div>
+        <div class="sec-title">Chapter Detail</div>
+        <div class="sec-sub">Summary statistics and event breakdown for a specific chapter.</div>
+      </div>
+      <select id="ch-select"></select>
+    </div>
+    <div class="stats-grid" id="ch-stats"></div>
+    <div class="ch-layout">
+      <div class="card">
+        <div class="card-title">Event Type Breakdown</div>
+        <div class="card-subtitle">Actions grouped as a single category.</div>
+        <div class="chart-wrap" style="height:220px"><canvas id="ch-type-chart"></canvas></div>
+        <div id="ch-pie-legend" style="margin-top:14px;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Events Log</div>
+        <div class="card-subtitle">All events recorded for this chapter.</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Date</th><th>Type</th><th>Attendees</th><th>Emails Added</th><th>HQ Funding</th><th></th></tr></thead>
+            <tbody id="ch-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="view-eventtype" class="view">
+    <div class="sec-hdr">
+      <div>
+        <div class="sec-title">Compare by Event Type</div>
+        <div class="sec-sub">Select one or more event types. A chart is shown for each.</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="form-group">
+        <label>Select event types (multi-select)</label>
+        <div class="type-pills" id="et-type-pills">
+          <button class="type-pill tp-cm active" data-type="Committee Meeting">Committee Meeting</button>
+          <button class="type-pill tp-sm dim"    data-type="Social Meeting">Social Meeting</button>
+          <button class="type-pill tp-cu dim"    data-type="Action: Cleanup">Cleanup</button>
+          <button class="type-pill tp-pm dim"    data-type="Action: Planning Meeting">Planning Meeting</button>
+          <button class="type-pill tp-cp dim"    data-type="Action: Consultation/Petition">Consultation / Petition</button>
+          <button class="type-pill tp-hk dim"    data-type="Action: Hackathon/Vibe Coding">Hackathon / Vibe Coding</button>
+          <button class="type-pill tp-ot dim"    data-type="Action: Other">Other</button>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="form-group">
+        <label>Metric</label>
+        <div class="metric-tabs" id="et-metric-tabs">
+          <button class="metric-tab active" data-metric="count">No. of Events</button>
+          <button class="metric-tab" data-metric="attendees">Avg Attendees</button>
+          <button class="metric-tab" data-metric="emails">Avg Emails</button>
+          <button class="metric-tab" data-metric="funding">Avg Funding (£)</button>
+        </div>
+      </div>
+    </div>
+    <div id="et-no-selection" class="card" style="display:none">
+      <div class="empty">Select at least one event type above to see the comparison chart.</div>
+    </div>
+    <div id="et-charts-container"></div>
+  </div>
+
+  <div id="view-add" class="view">
+    <div class="sec-title" style="margin-bottom:18px">Add New Event</div>
+    <div class="card" style="max-width:720px;margin-bottom:24px">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Chapter *</label>
+          <select id="f-chapter"></select>
+        </div>
+        <div class="form-group">
+          <label>Date *</label>
+          <input type="date" id="f-date">
+        </div>
+        <div class="form-group">
+          <label>Event Type *</label>
+          <select id="f-type">
+            <option value="Committee Meeting">Committee Meeting</option>
+            <option value="Social Meeting">Social Meeting</option>
+            <option value="Action">Action</option>
+          </select>
+        </div>
+        <div class="form-group" id="f-subtype-wrap" style="display:none">
+          <label>Action Sub-type *</label>
+          <select id="f-subtype">
+            <option value="Cleanup">Cleanup</option>
+            <option value="Planning Meeting">Planning Meeting</option>
+            <option value="Consultation/Petition">Consultation / Petition</option>
+            <option value="Hackathon/Vibe Coding">Hackathon / Vibe Coding</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Attendees</label>
+          <input type="number" id="f-attendees" min="0" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>Emails Added to Mailing List</label>
+          <input type="number" id="f-emails" min="0" placeholder="0">
+        </div>
+        <div class="form-group">
+          <label>HQ Funding Provided (£)</label>
+          <input type="number" id="f-funding" min="0" placeholder="0">
+        </div>
+      </div>
+      <div style="margin-top:18px;display:flex;align-items:center;flex-wrap:wrap;gap:8px">
+        <button class="btn btn-primary" id="add-btn" onclick="addEvent()">Add Event</button>
+        <span class="success-msg" id="add-ok">Event saved</span>
+        <span class="error-msg"   id="add-err">Something went wrong - please try again.</span>
+      </div>
+    </div>
+
+    <div class="sec-title" style="margin-bottom:6px">Edit Member Counts</div>
+    <div style="font-size:.78rem;color:var(--ts);margin-bottom:14px">Update the total number of members per chapter.</div>
+    <div class="card" style="max-width:720px">
+      <div id="members-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:11px"></div>
+      <div style="margin-top:16px;display:flex;align-items:center;gap:8px">
+        <button class="btn btn-primary" id="mem-btn" onclick="saveMembers()">Save Member Counts</button>
+        <span class="success-msg" id="mem-ok">Saved</span>
+        <span class="error-msg"   id="mem-err">Something went wrong - please try again.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ================================================================
+//  STEP 1: PASTE YOUR SUPABASE DETAILS HERE
+//  Find these in your Supabase project under Settings > API
+// ================================================================
+const SUPABASE_URL      = 'https://ritbzctrdubxiqwwrkiu.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJpdGJ6Y3RyZHVieGlxd3dya2l1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNzgzNjgsImV4cCI6MjA5MDY1NDM2OH0.5F8JIezTFpDYBgsvY_5Q3heigG83Zi8irN5ikHlIrUE';
+// ================================================================
+
+const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+const CHAPTERS = [
+  "Aberdeen","Birmingham","Brighton","Cambridge","Ealing","Edinburgh",
+  "Hammersmith & Fulham","Leeds","Leicester","Liverpool","Manchester",
+  "Milton Keynes","Newbury","Newcastle","Oxford","Putney","Rochester",
+  "Sheffield","South Wales","South West England","Southwark",
+  "Tunbridge Wells","Westminster"
+];
+
+const TYPES = {
+  "Committee Meeting":             { color:"#B8CCFF", light:"#E8EEFF", text:"#3D5CB8", cls:"b-cm" },
+  "Social Meeting":                { color:"#FFB8D1", light:"#FFE8F0", text:"#B83D70", cls:"b-sm" },
+  "Action: Cleanup":               { color:"#B8F0D5", light:"#E5FFF2", text:"#2D8C60", cls:"b-cu" },
+  "Action: Planning Meeting":      { color:"#FFF5B8", light:"#FFFDE5", text:"#7A6A1A", cls:"b-pm" },
+  "Action: Consultation/Petition": { color:"#FFD5B8", light:"#FFF0E5", text:"#8C5A2D", cls:"b-cp" },
+  "Action: Hackathon/Vibe Coding": { color:"#D5B8FF", light:"#F0E5FF", text:"#6A3DB8", cls:"b-hk" },
+  "Action: Other":                 { color:"#D5D8E8", light:"#F0F1F7", text:"#5A5E7A", cls:"b-ot" },
+};
+
+const PIE_GROUPS = {
+  "Committee Meeting": { color:"#B8CCFF" },
+  "Social Meeting":    { color:"#FFB8D1" },
+  "Action":            { color:"#B8F0D5" },
+};
+
+let db = { members: {}, events: [] };
+
+async function loadDB() {
+  const [{ data: chapters, error: e1 }, { data: events, error: e2 }] = await Promise.all([
+    _sb.from('chapters').select('*'),
+    _sb.from('events').select('*').order('date', { ascending: true })
+  ]);
+  if (e1 || e2) {
+    document.getElementById('loading-overlay').innerHTML =
+      '<div style="color:#C0392B;font-size:.9rem;padding:20px;text-align:center;max-width:400px">Could not connect to the database.<br><br>Please check that you have pasted your Supabase URL and anon key correctly into the file (see Step 1 near the top of the script).</div>';
+    return false;
+  }
+  db.members = {};
+  (chapters || []).forEach(c => { db.members[c.name] = c.members; });
+  db.events = (events || []).map(e => ({
+    id: e.id, chapter: e.chapter, date: e.date, type: e.type,
+    subType: e.sub_type, attendees: e.attendees, emails: e.emails, funding: Number(e.funding)
+  }));
+  return true;
+}
+
+function showSaving() { document.getElementById('saving-badge').style.display = 'inline'; }
+function hideSaving()  { document.getElementById('saving-badge').style.display = 'none'; }
+
+async function insertEvent(ev) {
+  showSaving();
+  const { data, error } = await _sb.from('events').insert({
+    chapter: ev.chapter, date: ev.date, type: ev.type, sub_type: ev.subType || null,
+    attendees: ev.attendees, emails: ev.emails, funding: ev.funding
+  }).select().single();
+  hideSaving();
+  if (error) { console.error(error); return null; }
+  return data.id;
+}
+
+async function removeEvent(id) {
+  showSaving();
+  const { error } = await _sb.from('events').delete().eq('id', id);
+  hideSaving();
+  return !error;
+}
+
+async function updateMemberCount(name, members) {
+  const { error } = await _sb.from('chapters').update({ members }).eq('name', name);
+  return !error;
+}
+
+const state = { etMetric: "count", etSelected: new Set(["Committee Meeting"]), charts: {} };
+
+function avg(arr)  { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function sum(arr)  { return arr.reduce((a,b)=>a+b,0); }
+function getEvents(chapter) { return db.events.filter(e => e.chapter === chapter); }
+function fullType(ev) { return ev.type === "Action" && ev.subType ? `Action: ${ev.subType}` : ev.type; }
+
+function metricVal(events, metric) {
+  if (metric === "count")     return events.length;
+  if (metric === "attendees") return +avg(events.map(e=>e.attendees)).toFixed(1);
+  if (metric === "emails")    return +avg(events.map(e=>e.emails)).toFixed(1);
+  if (metric === "funding")   return +avg(events.map(e=>e.funding)).toFixed(1);
+  return 0;
+}
+
+function metricLabel(m) {
+  return { count:"Number of Events", attendees:"Avg Attendees / Event", emails:"Avg Emails / Event", funding:"Avg HQ Funding / Event (£)" }[m] || m;
+}
+
+function badge(ft) {
+  const t = TYPES[ft];
+  return t ? `<span class="badge ${t.cls}">${ft}</span>` : `<span class="badge">${ft}</span>`;
+}
+
+function destroyChart(key) { if (state.charts[key]) { state.charts[key].destroy(); delete state.charts[key]; } }
+function mkChart(key, ctx, cfg) { destroyChart(key); state.charts[key] = new Chart(ctx, cfg); return state.charts[key]; }
+
+function hBarCfg(labels, values, color, xlabel, fmtFn) {
+  return {
+    type: "bar",
+    data: { labels, datasets: [{ data:values, backgroundColor:color, borderColor:color, borderWidth:1, borderRadius:4 }] },
+    options: {
+      indexAxis:"y", responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false}, tooltip:{ callbacks:{ label: ctx => fmtFn ? fmtFn(ctx.parsed.x) : ` ${ctx.parsed.x}` }}},
+      scales: {
+        x: { beginAtZero:true, grid:{color:"#F0F2F8"}, ticks:{color:"#6B7299",font:{size:11}}, title:{display:true,text:xlabel,color:"#6B7299",font:{size:11}} },
+        y: { grid:{display:false}, ticks:{color:"#2D3250",font:{size:11}} }
+      }
+    }
+  };
+}
+
+document.querySelectorAll("#nav-tabs .nav-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#nav-tabs .nav-tab").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    btn.classList.add("active");
+    const v = btn.dataset.view;
+    document.getElementById(`view-${v}`).classList.add("active");
+    if (v==="overview")  renderOverview();
+    if (v==="chapter")   renderChapter();
+    if (v==="eventtype") renderEventType();
+    if (v==="add")       renderAdd();
+  });
+});
+
+function renderOverview() {
+  function sorted(fn) { return CHAPTERS.map(ch => ({ ch, val: fn(ch) })).sort((a,b) => b.val - a.val); }
+  const evRows  = sorted(ch => getEvents(ch).length);
+  const actRows = sorted(ch => db.events.filter(e => e.chapter===ch && e.type==="Action").length);
+  const spRows  = sorted(ch => sum(getEvents(ch).map(e => e.funding)));
+  mkChart("ov-ev",  document.getElementById("ov-events-chart").getContext("2d"),  hBarCfg(evRows.map(r=>r.ch),  evRows.map(r=>r.val),  "#B8CCFF", "Total Events"));
+  mkChart("ov-act", document.getElementById("ov-actions-chart").getContext("2d"), hBarCfg(actRows.map(r=>r.ch), actRows.map(r=>r.val), "#B8F0D5", "Total Actions"));
+  mkChart("ov-sp",  document.getElementById("ov-spend-chart").getContext("2d"),   hBarCfg(spRows.map(r=>r.ch),  spRows.map(r=>r.val),  "#D5B8FF", "Total HQ Spend (£)", v => ` £${v}`));
+}
+
+function initChapterSelect() {
+  const sel = document.getElementById("ch-select");
+  CHAPTERS.forEach(ch => { const o=document.createElement("option"); o.value=ch; o.textContent=ch; sel.appendChild(o); });
+  sel.addEventListener("change", renderChapter);
+}
+
+function renderChapter() {
+  const ch  = document.getElementById("ch-select").value;
+  const evs = getEvents(ch).sort((a,b) => new Date(a.date)-new Date(b.date));
+  const totalFunding     = sum(evs.map(e=>e.funding));
+  const actionEvs        = evs.filter(e=>e.type==="Action");
+  const actionFunding    = sum(actionEvs.map(e=>e.funding));
+  const avgFundPerEvent  = evs.length       ? (totalFunding  / evs.length).toFixed(2)       : "0.00";
+  const avgFundPerAction = actionEvs.length ? (actionFunding / actionEvs.length).toFixed(2) : "-";
+
+  document.getElementById("ch-stats").innerHTML = `
+    <div class="stat-card"><div class="stat-value">${evs.length}</div><div class="stat-label">Total Events</div></div>
+    <div class="stat-card"><div class="stat-value">${db.members[ch]||0}</div><div class="stat-label">Members</div></div>
+    <div class="stat-card"><div class="stat-value">${avg(evs.map(e=>e.attendees)).toFixed(1)}</div><div class="stat-label">Avg Attendees / Event</div></div>
+    <div class="stat-card"><div class="stat-value">${avg(evs.map(e=>e.emails)).toFixed(1)}</div><div class="stat-label">Avg Emails / Event</div></div>
+    <div class="stat-card"><div class="stat-value">£${avgFundPerEvent}</div><div class="stat-label">Avg Funding / Event</div></div>
+    <div class="stat-card"><div class="stat-value">${avgFundPerAction==="-"?"-":"£"+avgFundPerAction}</div><div class="stat-label">Avg Funding / Action</div></div>
+  `;
+
+  const grouped = { "Committee Meeting":0, "Social Meeting":0, "Action":0 };
+  evs.forEach(e => { if (e.type==="Action") grouped["Action"]++; else if (grouped[e.type]!==undefined) grouped[e.type]++; });
+  const pieLabels = Object.keys(grouped).filter(k => grouped[k] > 0);
+  const pieValues = pieLabels.map(k => grouped[k]);
+  const pieColors = pieLabels.map(k => PIE_GROUPS[k].color);
+
+  destroyChart("chType");
+  if (pieLabels.length > 0) {
+    state.charts["chType"] = new Chart(document.getElementById("ch-type-chart").getContext("2d"), {
+      type:"doughnut",
+      data:{ labels:pieLabels, datasets:[{ data:pieValues, backgroundColor:pieColors, borderWidth:2, borderColor:"#fff" }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} } }
+    });
+  }
+
+  document.getElementById("ch-pie-legend").innerHTML = pieLabels.map((k,i) => `
+    <div style="display:flex;align-items:center;gap:8px;font-size:.78rem;color:var(--tp)">
+      <div style="width:12px;height:12px;border-radius:3px;background:${pieColors[i]};flex-shrink:0"></div>
+      <span>${k}</span>
+      <span style="margin-left:auto;font-weight:600;color:var(--ts)">${pieValues[i]}</span>
+    </div>`).join("");
+
+  document.getElementById("ch-tbody").innerHTML = evs.length === 0
+    ? `<tr><td colspan="6" class="empty">No events recorded yet. Use the "+ Add Event" tab.</td></tr>`
+    : evs.map(e => `<tr>
+        <td>${e.date}</td><td>${badge(fullType(e))}</td>
+        <td>${e.attendees}</td><td>${e.emails}</td><td>£${e.funding}</td>
+        <td><button class="btn-del" onclick="deleteEvent(${e.id})">x</button></td>
+      </tr>`).join("");
+}
+
+async function deleteEvent(id) {
+  if (!confirm("Delete this event?")) return;
+  const ok = await removeEvent(id);
+  if (!ok) { alert("Could not delete the event. Please try again."); return; }
+  db.events = db.events.filter(e=>e.id!==id);
+  renderChapter(); renderOverview();
+}
+
+document.querySelectorAll("#et-type-pills .type-pill").forEach(pill => {
+  pill.addEventListener("click", () => {
+    const t = pill.dataset.type;
+    if (state.etSelected.has(t)) { state.etSelected.delete(t); pill.classList.remove("active"); pill.classList.add("dim"); }
+    else { state.etSelected.add(t); pill.classList.add("active"); pill.classList.remove("dim"); }
+    renderEventType();
+  });
+});
+
+document.querySelectorAll("#et-metric-tabs .metric-tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("#et-metric-tabs .metric-tab").forEach(b=>b.classList.remove("active"));
+    btn.classList.add("active"); state.etMetric = btn.dataset.metric; renderEventType();
+  });
+});
+
+function renderEventType() {
+  Object.keys(state.charts).filter(k=>k.startsWith("et-")).forEach(k => { state.charts[k].destroy(); delete state.charts[k]; });
+  const container = document.getElementById("et-charts-container");
+  const noSel = document.getElementById("et-no-selection");
+  container.innerHTML = "";
+  if (state.etSelected.size === 0) { noSel.style.display="block"; return; }
+  noSel.style.display = "none";
+  const m = state.etMetric;
+  for (const selType of state.etSelected) {
+    const rows = CHAPTERS.map(ch => {
+      const evs = db.events.filter(e => e.chapter===ch && fullType(e)===selType);
+      return { ch, val: metricVal(evs, m), count: evs.length };
+    }).filter(r => r.count > 0).sort((a,b) => b.val - a.val);
+    const typeInfo = TYPES[selType] || { color:"#B8CCFF" };
+    const h = Math.max(180, rows.length * 42 + 60);
+    const canvasId = `et-canvas-${selType.replace(/[^a-z0-9]/gi,"_")}`;
+    const card = document.createElement("div");
+    card.className = "card"; card.style.marginBottom = "16px";
+    card.innerHTML = `
+      <div class="card-title">${selType}</div>
+      <div class="card-subtitle">${rows.length} chapter${rows.length!==1?"s":""} with recorded events of this type.</div>
+      ${rows.length===0
+        ? `<div class="empty">No chapters have recorded events of this type yet.</div>`
+        : `<div class="chart-wrap" style="height:${h}px"><canvas id="${canvasId}"></canvas></div>`}`;
+    container.appendChild(card);
+    if (rows.length > 0) {
+      mkChart(`et-${selType}`, document.getElementById(canvasId).getContext("2d"),
+        hBarCfg(rows.map(r=>r.ch), rows.map(r=>r.val), typeInfo.color, metricLabel(m), m==="funding" ? v => ` £${v}` : null));
+    }
+  }
+}
+
+function initFormSelect() {
+  const sel = document.getElementById("f-chapter");
+  CHAPTERS.forEach(ch => { const o=document.createElement("option"); o.value=ch; o.textContent=ch; sel.appendChild(o); });
+  document.getElementById("f-type").addEventListener("change", () => {
+    document.getElementById("f-subtype-wrap").style.display = document.getElementById("f-type").value==="Action" ? "flex" : "none";
+  });
+}
+
+async function addEvent() {
+  const chapter   = document.getElementById("f-chapter").value;
+  const date      = document.getElementById("f-date").value;
+  const type      = document.getElementById("f-type").value;
+  const subType   = type==="Action" ? document.getElementById("f-subtype").value : null;
+  const attendees = parseInt(document.getElementById("f-attendees").value)||0;
+  const emails    = parseInt(document.getElementById("f-emails").value)||0;
+  const funding   = parseFloat(document.getElementById("f-funding").value)||0;
+  if (!date) { alert("Please enter a date."); return; }
+  const btn = document.getElementById("add-btn");
+  btn.disabled = true; btn.textContent = "Saving...";
+  const newId = await insertEvent({ chapter, date, type, subType, attendees, emails, funding });
+  btn.disabled = false; btn.textContent = "Add Event";
+  if (!newId) { document.getElementById("add-err").style.display="inline"; setTimeout(()=>document.getElementById("add-err").style.display="none",3000); return; }
+  db.events.push({ id:newId, chapter, date, type, subType, attendees, emails, funding });
+  ["f-date","f-attendees","f-emails","f-funding"].forEach(id => document.getElementById(id).value="");
+  const ok = document.getElementById("add-ok");
+  ok.style.display="inline"; setTimeout(()=>ok.style.display="none",2500);
+}
+
+function renderAdd() {
+  document.getElementById("members-grid").innerHTML = CHAPTERS.map(ch =>
+    `<div class="form-group">
+       <label>${ch}</label>
+       <input type="number" id="mb-${ch.replace(/[^a-z0-9]/gi,"_")}" value="${db.members[ch]||0}" min="0" style="width:100%">
+     </div>`).join("");
+}
+
+async function saveMembers() {
+  const btn = document.getElementById("mem-btn");
+  btn.disabled = true; btn.textContent = "Saving...";
+  const results = await Promise.all(CHAPTERS.map(async ch => {
+    const el = document.getElementById(`mb-${ch.replace(/[^a-z0-9]/gi,"_")}`);
+    const val = parseInt(el?.value)||0;
+    db.members[ch] = val;
+    return updateMemberCount(ch, val);
+  }));
+  btn.disabled = false; btn.textContent = "Save Member Counts";
+  if (results.every(Boolean)) {
+    const ok = document.getElementById("mem-ok");
+    ok.style.display="inline"; setTimeout(()=>ok.style.display="none",2500);
+  } else {
+    const err = document.getElementById("mem-err");
+    err.style.display="inline"; setTimeout(()=>err.style.display="none",3000);
+  }
+}
+
+async function init() {
+  const ok = await loadDB();
+  document.getElementById("loading-overlay").style.display = "none";
+  if (!ok) return;
+  initChapterSelect(); initFormSelect();
+  document.getElementById("f-date").value = new Date().toISOString().split("T")[0];
+  renderOverview();
+}
+
+init();
+</script>
+</body>
+</html>
